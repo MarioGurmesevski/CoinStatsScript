@@ -6,11 +6,12 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 load_dotenv()
 
@@ -187,7 +188,9 @@ def get_portfolio_data_selenium(portfolio_url):
     options.add_argument('--headless')
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
-    driver = webdriver.Chrome(service=Service(CHROME_DRIVER_PATH), options=options)
+
+    # Use WebDriver Manager to handle ChromeDriver setup
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
     try:
         driver.get(portfolio_url)
@@ -222,7 +225,6 @@ def get_portfolio_data_selenium(portfolio_url):
 
     finally:
         driver.quit()
-
 
 def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
     if market_data:
