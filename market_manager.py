@@ -5,46 +5,16 @@ import json
 import os
 from dotenv import load_dotenv
 from datetime import datetime
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
 load_dotenv()
 
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')  # Replace with your bot token
 CHAT_ID = os.getenv('CHAT_ID') # Replace with your chat ID
-
-# JSON File for Portfolios
-PORTFOLIOS_FILE = "portfolios.json"
-
-CHROME_DRIVER_PATH = os.getenv('CHROME_DRIVER_PATH')
-  # Path to chromedriver
 COINMARKETCAP_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
 
-# Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(threadName)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+previous_dominance = {"btc_dominance": None}
 
-
-def load_portfolios():
-    """Load portfolios from a JSON file."""
-    if os.path.exists("portfolios.json"):
-        with open("portfolios.json", "r") as file:
-            try:
-                # Parse the entire file as a single JSON array
-                return json.load(file)
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to load portfolios: {e}")
-                return []  # Return an empty list if parsing fails
-    return []
 
 def load_tickers():
     if os.path.exists("tickers.json"):
@@ -127,8 +97,8 @@ def fetch_crypto_market_data(symbols):
 
         return {
             "filtered_data": filtered_data,
-            "top_gainer": {"name": top_gainer["name"], "symbol": top_gainer["symbol"], "change": top_gainer["quote"]["USD"]["percent_change_24h"]} if top_gainer else None,
-            "top_loser": {"name": top_loser["name"], "symbol": top_loser["symbol"], "change": top_loser["quote"]["USD"]["percent_change_24h"]} if top_loser else None,
+            "top_gainer": {"name": top_gainer["name"], "symbol": top_gainer["symbol"],"change": top_gainer["quote"]["USD"]["percent_change_24h"]} if top_gainer else None,
+            "top_loser": {"name": top_loser["name"], "symbol": top_loser["symbol"],"change": top_loser["quote"]["USD"]["percent_change_24h"]} if top_loser else None,
             "total_market_cap": total_market_cap,
             "bitcoin_dominance": bitcoin_dominance,
             "ethereum_dominance": ethereum_dominance,
@@ -137,8 +107,6 @@ def fetch_crypto_market_data(symbols):
     except Exception as e:
         logging.error(f"Failed to fetch crypto market data: {e}")
         return None
-
-
 
 def fetch_fear_and_greed_index():
     """Fetch the Fear & Greed Index."""
@@ -155,7 +123,6 @@ def fetch_fear_and_greed_index():
     except Exception as e:
         print(f"ERROR: Failed to fetch Fear & Greed Index: {e}")
         return None, None
-
 
 def fetch_market_dominance():
     """Fetch Bitcoin and Ethereum dominance from CoinMarketCap."""
@@ -181,60 +148,18 @@ def fetch_market_dominance():
         print(f"ERROR: Failed to fetch market dominance: {e}")
         return None, None, None
 
-
-def get_portfolio_data_selenium(portfolio_url):
-    """Scrape portfolio data using Selenium."""
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--no-sandbox')
-
-    # Use WebDriver Manager to handle ChromeDriver setup
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-
-    try:
-        driver.get(portfolio_url)
-        time.sleep(5)
-
-        username_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, '.UserInfoMenuItemWithTitleAndDesc_user-data-with-title-and-desc__lSn_8 h1'))
-        )
-        username = username_element.get_attribute("title") or username_element.text.strip()
-
-        total_value_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "PortfolioPriceInfo_PT-price-info_price__AHDbL"))
-        )
-        total_value = float(total_value_element.text.strip("$").replace(",", ""))
-
-        money_changed_span = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "PortfolioProfitInfo_PTProfitInfoPrice__NqSAb"))
-        )
-        money_changed = float(money_changed_span.get_attribute("title").replace("$", "").replace(",", "").strip())
-
-        percentage_change_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "PortfolioProfitInfo_percentText__L7i9L"))
-        )
-        percentage_change = float(percentage_change_element.get_attribute("title").strip("%"))
-
-        return username, total_value, percentage_change, money_changed
-
-    except Exception as e:
-        print(f"ERROR: Failed to fetch portfolio data: {e}")
-        return None, None, None, None
-
-    finally:
-        driver.quit()
-
 def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
+    global previous_dominance  # Use the global variable to persist BTC dominance across calls
+
     if market_data:
         current_time = datetime.now().strftime('%H:%M')
 
         # Construct the message dynamically for all cryptocurrencies in market_data
-        crypto_updates = ""
+        crypto_updates = []
         for symbol, data in market_data["filtered_data"].items():
             if data['price'] is not None:  # Skip entries with missing price
-                crypto_updates += f"💰 {data['name']} ({symbol}): ${data['price']:.2f} ({data['change_24h']:+.2f}%)\n"
+                crypto_updates.append(f"💰 {data['name']} ({symbol}): ${data['price']:.2f} ({data['change_24h']:+.2f}%)")
+        crypto_updates = "\n".join(crypto_updates)
 
         # Include Top Gainer and Top Loser
         gainer_text = (
@@ -247,14 +172,33 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
             f"({market_data['top_loser']['change']:.2f}%)\n\n" if market_data.get("top_loser") else ""
         )
 
+        # Calculate Bitcoin dominance change
+        bitcoin_dominance = market_data["bitcoin_dominance"]
+        previous_value = previous_dominance.get("btc_dominance")
+
+        if previous_value is not None:
+            # Calculate the difference (not absolute)
+            dominance_difference = bitcoin_dominance - previous_value
+
+            formatted_difference = f"{dominance_difference:+.2f}"  # Decimal format with "+" or "-"
+
+            # Construct the dominance change text
+            dominance_change_text = f"{bitcoin_dominance:.2f}({formatted_difference})"
+        else:
+            # No previous value, just display the current dominance
+            dominance_change_text = f"{bitcoin_dominance:.2f}"
+
+        # Update the previous value (persist across function calls)
+        previous_dominance["btc_dominance"] = bitcoin_dominance
+
         # Construct the full message
         message = (
             f"📈 <b>Crypto Market Update</b>\n\n"
-            f"{crypto_updates}\n"
+            f"{crypto_updates}\n\n"
             f"{gainer_text}"
             f"{loser_text}"
             f"🌐 Total Market Cap: ${market_data['total_market_cap'] / 1e12:.2f}T\n"
-            f"📊 BTC Dominance: {market_data['bitcoin_dominance']:.2f}%\n"
+            f"📊 BTC Dominance: {dominance_change_text}%\n"
             f"📊 ETH Dominance: {market_data['ethereum_dominance']:.2f}%\n"
             f"📊 Altcoin Dominance: {market_data['altcoin_dominance']:.2f}%\n"
             f"😨 Fear & Greed Index: {fear_and_greed_index} ({sentiment})\n\n"
@@ -284,80 +228,8 @@ def monitor_market_updates():
             time.sleep(10)
 
 
-def monitor_portfolios():
-    """Monitor portfolios and send updates or alerts."""
-    # Load portfolios from the JSON file
-    portfolios = load_portfolios()
-
-    # Dictionary to store previous values for each portfolio
-    previous_values = {portfolio["name"]: None for portfolio in portfolios}
-
-    while True:
-        for portfolio in portfolios:
-            try:
-                # Extract portfolio details
-                portfolio_url = portfolio["url"]
-                threshold = portfolio["threshold"]
-                portfolio_name = portfolio["name"]
-
-                # Fetch portfolio data using Selenium
-                username, total_value, percentage_change, money_changed = get_portfolio_data_selenium(portfolio_url)
-
-                if total_value is not None and percentage_change is not None:
-                    current_time = datetime.now().strftime('%H:%M')
-
-                    # Calculate the difference from the previous value
-                    previous_value = previous_values.get(portfolio_name)
-                    if previous_value is not None:
-                        value_difference = total_value - previous_value
-                        portfolio["totalLostOrGainedSinceTheStartOfTheScript"] += value_difference
-                        difference_text = f" ({'+' if value_difference > 0 else ''}{value_difference:.2f})"
-                    else:
-                        difference_text = ""  # No difference for the first iteration
-
-                    # Update the previous value for next iteration
-                    previous_values[portfolio_name] = total_value
-
-                    change_emoji = "📈" if money_changed > 0 else "📉"
-
-                    # Portfolio update message
-                    update_message = (
-                        f"📊 <b>{username} Update</b>\n\n"
-                        f"💰 Current Value: ${total_value:.2f}{difference_text}\n"
-                        f"{change_emoji} 24h Change: {percentage_change}%\n"
-                        f"💵 Money Changed: ${money_changed:.2f}\n"
-                        f"📊 Total Lost/Gained: "
-                        f"${portfolio['totalLostOrGainedSinceTheStartOfTheScript']:.2f}\n\n"
-                        f"🕒 Sent at: {current_time}"
-                    )
-
-                    send_telegram_message(update_message)
-
-                    # Alert if threshold is crossed
-                    if total_value >= threshold:
-                        alert_message = (
-                            f"🚀 <b>{portfolio_name} Alert</b>\n\n"
-                            f"👤 Username: {username}\n"
-                            f"💰 Current Value: ${total_value:.2f}\n"
-                            f"⚠️ Threshold of ${threshold} crossed!\n\n"
-                            f"🕒 Sent at: {current_time}"
-                        )
-                        for _ in range(3):  # Send alert multiple times
-                            send_telegram_message(alert_message)
-                            time.sleep(1)
-
-            except Exception as e:
-                logging.error(f"ERROR: {e}")
-
-        # Timer for the next portfolio update (10-minute interval with 10-second increments)
-        for remaining in range(600, 0, -10):
-            minutes, seconds = divmod(remaining, 60)
-            logging.info(f"Next portfolio update in: {minutes:02d}:{seconds:02d}")
-            time.sleep(10)
 
 if __name__ == "__main__":
     from threading import Thread
 
-    # Run portfolio monitoring and market updates in parallel
-    Thread(target=monitor_portfolios).start()
     Thread(target=monitor_market_updates).start()
