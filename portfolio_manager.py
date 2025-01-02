@@ -152,7 +152,7 @@ def monitor_portfolios():
                     # Send alert if the threshold is crossed
                     if total_value >= threshold:
                         alert_message = (
-                            f"🚀 <b>{portfolio_name} Alert</b>\n"
+                            f"🚀 <b>{username} Alert</b>\n"
                             f"🔗 <b>Portfolio Link:</b> {portfolio_url}\n\n"
                             f"💰 Current Value: ${total_value:.2f}\n"
                             f"⚠️ Threshold of ${threshold} crossed!\n"

@@ -15,6 +15,7 @@ COINMARKETCAP_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
 
 previous_dominance = {"btc_dominance": None}
 
+previous_prices = {}
 
 def load_tickers():
     if os.path.exists("tickers.json"):
@@ -39,12 +40,12 @@ def send_telegram_message(message):
     payload = {
         'chat_id': CHAT_ID,
         'text': message,
-        'parse_mode': 'HTML'
+        'parse_mode': 'HTML',
+        "disable_web_page_preview": True
     }
     response = requests.post(url, json=payload)
     if not response.ok:
         print("ERROR: Failed to send Telegram message")
-
 
 def fetch_crypto_market_data(symbols):
     try:
@@ -150,40 +151,67 @@ def fetch_market_dominance():
 
 def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
     global previous_dominance  # Use the global variable to persist BTC dominance across calls
+    global previous_prices # Track previous prices for each cryptocurrency
 
     if market_data:
         current_time = datetime.now().strftime('%H:%M')
+
+        # Construct hyperlinks for tickers
+        def construct_hyperlink(name):
+            # Generate a CoinMarketCap URL based on the name
+            return f"https://www.coinmarketcap.com/currencies/{name.lower().replace(' ', '-')}/"
 
         # Construct the message dynamically for all cryptocurrencies in market_data
         crypto_updates = []
         for symbol, data in market_data["filtered_data"].items():
             if data['price'] is not None:  # Skip entries with missing price
-                crypto_updates.append(f"💰 {data['name']} ({symbol}): ${data['price']:.2f} ({data['change_24h']:+.2f}%)")
+                link = construct_hyperlink(data['name'])
+
+                # Format price based on its value
+                price_format = f"${data['price']:.4f}" if data['price'] < 1 else f"${data['price']:.2f}"
+
+                # Calculate price difference from the previous iteration
+                previous_price = previous_prices.get(symbol)
+                if previous_price is not None:
+                    price_difference = data['price'] - previous_price
+                    formatted_difference = f"({price_difference:+.4f})" if data[
+                                                                               'price'] < 1 else f"({price_difference:+.2f})"
+                else:
+                    formatted_difference = ""
+
+                # Update the tracked price for this symbol
+                previous_prices[symbol] = data['price']
+
+                # Append the update message without iteration count
+                crypto_updates.append(
+                    f"💰 <a href='{link}'>{data['name']} ({symbol})</a>: {price_format} {formatted_difference}"
+                )
         crypto_updates = "\n".join(crypto_updates)
 
-        # Include Top Gainer and Top Loser
+        # Construct hyperlinks for top gainer and top loser
+        gainer_link = construct_hyperlink(market_data["top_gainer"]["name"]) if market_data.get("top_gainer") else None
+        loser_link = construct_hyperlink(market_data["top_loser"]["name"]) if market_data.get("top_loser") else None
+
+        # Include Top Gainer and Top Loser with hyperlinks
         gainer_text = (
-            f"🔥 Top Gainer: {market_data['top_gainer']['name']} ({market_data['top_gainer']['symbol']}) "
-            f"(+{market_data['top_gainer']['change']:.2f}%)\n" if market_data.get("top_gainer") else ""
+            f"🔥 Top Gainer: <a href='{gainer_link}'>{market_data['top_gainer']['name']} ({market_data['top_gainer']['symbol']})</a> "
+            f"(+{market_data['top_gainer']['change']:.2f}%)\n" if gainer_link else ""
         )
 
         loser_text = (
-            f"❄️ Top Loser: {market_data['top_loser']['name']} ({market_data['top_loser']['symbol']}) "
-            f"({market_data['top_loser']['change']:.2f}%)\n\n" if market_data.get("top_loser") else ""
+            f"❄️ Top Loser: <a href='{loser_link}'>{market_data['top_loser']['name']} ({market_data['top_loser']['symbol']})</a> "
+            f"({market_data['top_loser']['change']:.2f}%)\n\n" if loser_link else ""
         )
 
-        # Calculate Bitcoin dominance change
+        # Handle Bitcoin dominance changes
         bitcoin_dominance = market_data["bitcoin_dominance"]
         previous_value = previous_dominance.get("btc_dominance")
 
         if previous_value is not None:
             # Calculate the difference (not absolute)
             dominance_difference = bitcoin_dominance - previous_value
-
             formatted_difference = f"{dominance_difference:+.2f}"  # Decimal format with "+" or "-"
-
-            # Construct the dominance change text
-            dominance_change_text = f"{bitcoin_dominance:.2f}({formatted_difference})"
+            dominance_change_text = f"{bitcoin_dominance:.2f} ({formatted_difference})"
         else:
             # No previous value, just display the current dominance
             dominance_change_text = f"{bitcoin_dominance:.2f}"
@@ -205,6 +233,7 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
             f"🕒 Sent at: {current_time}"
         )
 
+        # Send the message via Telegram
         send_telegram_message(message)
 
 def monitor_market_updates():
