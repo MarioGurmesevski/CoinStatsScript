@@ -14,9 +14,7 @@ CHAT_ID = os.getenv('CHAT_ID')  # Replace with your chat ID
 COINMARKETCAP_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
 
 previous_dominance = {"btc_dominance": None}
-
 previous_prices = {}
-
 
 def load_tickers():
     if os.path.exists("tickers.json"):
@@ -27,14 +25,12 @@ def load_tickers():
                 return []
     return []
 
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(threadName)s] %(message)s',
     datefmt='%H:%M:%S'
 )
-
 
 def send_telegram_message(message):
     """Send a message via Telegram bot."""
@@ -269,7 +265,6 @@ def monitor_market_updates():
             minutes, seconds = divmod(remaining, 60)
             logging.info(f"Next market update in: {minutes:02d}:{seconds:02d}")
             time.sleep(10)
-
 
 if __name__ == "__main__":
     from threading import Thread
