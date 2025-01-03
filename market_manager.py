@@ -10,12 +10,13 @@ load_dotenv()
 
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')  # Replace with your bot token
-CHAT_ID = os.getenv('CHAT_ID') # Replace with your chat ID
+CHAT_ID = os.getenv('CHAT_ID')  # Replace with your chat ID
 COINMARKETCAP_API_KEY = os.getenv('COINMARKETCAP_API_KEY')
 
 previous_dominance = {"btc_dominance": None}
 
 previous_prices = {}
+
 
 def load_tickers():
     if os.path.exists("tickers.json"):
@@ -25,6 +26,7 @@ def load_tickers():
             except json.JSONDecodeError:
                 return []
     return []
+
 
 # Configure logging
 logging.basicConfig(
@@ -62,7 +64,7 @@ def fetch_crypto_market_data(symbols):
 
         # Fetch cryptocurrency data (for individual symbols)
         coins_url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
-        params = {"start": 1, "limit": 250, "convert": "USD"}
+        params = {"start": 1, "limit": 3500, "convert": "USD"}
         coins_response = requests.get(coins_url, headers=headers, params=params)
         coins_response.raise_for_status()
         coins_data = coins_response.json()["data"]
@@ -98,8 +100,10 @@ def fetch_crypto_market_data(symbols):
 
         return {
             "filtered_data": filtered_data,
-            "top_gainer": {"name": top_gainer["name"], "symbol": top_gainer["symbol"],"change": top_gainer["quote"]["USD"]["percent_change_24h"]} if top_gainer else None,
-            "top_loser": {"name": top_loser["name"], "symbol": top_loser["symbol"],"change": top_loser["quote"]["USD"]["percent_change_24h"]} if top_loser else None,
+            "top_gainer": {"name": top_gainer["name"], "symbol": top_gainer["symbol"],
+                           "change": top_gainer["quote"]["USD"]["percent_change_24h"]} if top_gainer else None,
+            "top_loser": {"name": top_loser["name"], "symbol": top_loser["symbol"],
+                          "change": top_loser["quote"]["USD"]["percent_change_24h"]} if top_loser else None,
             "total_market_cap": total_market_cap,
             "bitcoin_dominance": bitcoin_dominance,
             "ethereum_dominance": ethereum_dominance,
@@ -151,7 +155,7 @@ def fetch_market_dominance():
 
 def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
     global previous_dominance  # Use the global variable to persist BTC dominance across calls
-    global previous_prices # Track previous prices for each cryptocurrency
+    global previous_prices  # Track previous prices for each cryptocurrency
 
     if market_data:
         current_time = datetime.now().strftime('%H:%M')
@@ -170,12 +174,22 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
                 # Format price based on its value
                 price_format = f"${data['price']:.4f}" if data['price'] < 1 else f"${data['price']:.2f}"
 
+                emoji = "💰"
+
                 # Calculate price difference from the previous iteration
                 previous_price = previous_prices.get(symbol)
                 if previous_price is not None:
                     price_difference = data['price'] - previous_price
-                    formatted_difference = f"({price_difference:+.4f})" if data[
-                                                                               'price'] < 1 else f"({price_difference:+.2f})"
+
+                    # Add 📈 for positive and 📉 for negative differences
+                    if price_difference > 0:
+                        emoji = "📈"
+                    elif price_difference < 0:
+                        emoji = "📉"
+                    elif price_difference == 0:
+                        emoji = "➖"
+
+                    formatted_difference = f"({price_difference:+.4f})" if data['price'] < 1 else f"({price_difference:+.2f})"
                 else:
                     formatted_difference = ""
 
@@ -184,7 +198,7 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
 
                 # Append the update message without iteration count
                 crypto_updates.append(
-                    f"💰 <a href='{link}'>{data['name']} ({symbol})</a>: {price_format} {formatted_difference}"
+                    f"{emoji} <a href='{link}'>{data['name']} ({symbol})</a>: {price_format} {formatted_difference}"
                 )
         crypto_updates = "\n".join(crypto_updates)
 
@@ -236,6 +250,7 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
         # Send the message via Telegram
         send_telegram_message(message)
 
+
 def monitor_market_updates():
     """Monitor and send regular market updates."""
     while True:
@@ -255,7 +270,6 @@ def monitor_market_updates():
             minutes, seconds = divmod(remaining, 60)
             logging.info(f"Next market update in: {minutes:02d}:{seconds:02d}")
             time.sleep(10)
-
 
 
 if __name__ == "__main__":
