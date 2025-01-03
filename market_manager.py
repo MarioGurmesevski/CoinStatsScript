@@ -250,7 +250,6 @@ def send_crypto_market_update(market_data, fear_and_greed_index, sentiment):
         # Send the message via Telegram
         send_telegram_message(message)
 
-
 def monitor_market_updates():
     """Monitor and send regular market updates."""
     while True:
